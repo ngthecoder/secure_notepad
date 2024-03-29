@@ -8,7 +8,7 @@ int main() {
     int option, public_key, private_key, quit;
     quit = 0;
 
-    while (quit == 0) {
+    do {
         menu();  // Call the menu function from RSA_Algorithm.c
         scanf("%d", &option);
 
@@ -39,6 +39,6 @@ int main() {
             default:
                 printf("Invalid Input.\n");
         }
-    }
+    } while (quit ==0);
     return 0;
 }
