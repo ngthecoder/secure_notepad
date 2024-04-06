@@ -26,3 +26,4 @@ ERD and Logic Flow attached as images
 Command to compile:
 gcc -o main main.c sqlite/sqlite3.c -Isqlite -lpthread -ldl
 gcc -o main main.c -Isqlite -lpthread -ldl -lssl -lcrypto
+(final) gcc main.c -o main -lsqlite3 -lcrypto -ldl
