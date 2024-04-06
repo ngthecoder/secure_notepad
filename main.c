@@ -11,7 +11,6 @@ void generate_rsa_key(const char *private_key_path, const char *public_key_path)
     FILE *private_key_file = fopen(private_key_path, "rb");
     FILE *public_key_file = fopen(public_key_path, "rb");
 
-    // Check if key files already exist
     if (private_key_file && public_key_file) {
         fclose(private_key_file);
         fclose(public_key_file);
@@ -19,7 +18,6 @@ void generate_rsa_key(const char *private_key_path, const char *public_key_path)
         return;
     }
 
-    // Generate RSA key pair
     if (!RSA_generate_key_ex(rsa, 2048, BN_new(), NULL)) {
         fprintf(stderr, "Error: Unable to generate RSA key pair.\n");
         ERR_print_errors_fp(stderr);
@@ -27,7 +25,6 @@ void generate_rsa_key(const char *private_key_path, const char *public_key_path)
         exit(EXIT_FAILURE);
     }
 
-    // Set the public exponent value
     if (!RSA_set0_key(rsa, RSA_get0_n(rsa), RSA_get0_e(rsa), NULL)) {
         fprintf(stderr, "Error: Unable to set public exponent.\n");
         ERR_print_errors_fp(stderr);
@@ -35,7 +32,6 @@ void generate_rsa_key(const char *private_key_path, const char *public_key_path)
         exit(EXIT_FAILURE);
     }
 
-    // Write private key to file
     private_key_file = fopen(private_key_path, "wb");
     if (!private_key_file || !PEM_write_RSAPrivateKey(private_key_file, rsa, NULL, NULL, 0, NULL, NULL)) {
         fprintf(stderr, "Error: Unable to write private key to file '%s'.\n", private_key_path);
@@ -43,8 +39,7 @@ void generate_rsa_key(const char *private_key_path, const char *public_key_path)
         exit(EXIT_FAILURE);
     }
     fclose(private_key_file);
-
-    // Write public key to file
+    
     public_key_file = fopen(public_key_path, "wb");
     if (!public_key_file || !PEM_write_RSAPublicKey(public_key_file, rsa)) {
         fprintf(stderr, "Error: Unable to write public key to file '%s'.\n", public_key_path);
