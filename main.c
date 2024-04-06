@@ -2,6 +2,61 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sqlite3.h>
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+
+void generate_rsa_key(const char *private_key_path, const char *public_key_path) {
+    RSA *rsa = RSA_new();
+    FILE *private_key_file = fopen(private_key_path, "rb");
+    FILE *public_key_file = fopen(public_key_path, "rb");
+
+    // Check if key files already exist
+    if (private_key_file && public_key_file) {
+        fclose(private_key_file);
+        fclose(public_key_file);
+        RSA_free(rsa);
+        return;
+    }
+
+    // Generate RSA key pair
+    if (!RSA_generate_key_ex(rsa, 2048, BN_new(), NULL)) {
+        fprintf(stderr, "Error: Unable to generate RSA key pair.\n");
+        ERR_print_errors_fp(stderr);
+        RSA_free(rsa);
+        exit(EXIT_FAILURE);
+    }
+
+    // Set the public exponent value
+    if (!RSA_set0_key(rsa, RSA_get0_n(rsa), RSA_get0_e(rsa), NULL)) {
+        fprintf(stderr, "Error: Unable to set public exponent.\n");
+        ERR_print_errors_fp(stderr);
+        RSA_free(rsa);
+        exit(EXIT_FAILURE);
+    }
+
+    // Write private key to file
+    private_key_file = fopen(private_key_path, "wb");
+    if (!private_key_file || !PEM_write_RSAPrivateKey(private_key_file, rsa, NULL, NULL, 0, NULL, NULL)) {
+        fprintf(stderr, "Error: Unable to write private key to file '%s'.\n", private_key_path);
+        RSA_free(rsa);
+        exit(EXIT_FAILURE);
+    }
+    fclose(private_key_file);
+
+    // Write public key to file
+    public_key_file = fopen(public_key_path, "wb");
+    if (!public_key_file || !PEM_write_RSAPublicKey(public_key_file, rsa)) {
+        fprintf(stderr, "Error: Unable to write public key to file '%s'.\n", public_key_path);
+        RSA_free(rsa);
+        exit(EXIT_FAILURE);
+    }
+    fclose(public_key_file);
+
+    printf("RSA key pair generated successfully.\n");
+
+    RSA_free(rsa);
+}
 
 void create_tables(sqlite3 *db) {
     char *err_msg = 0;
@@ -10,19 +65,11 @@ void create_tables(sqlite3 *db) {
             "UserID INTEGER PRIMARY KEY, "
             "Username TEXT NOT NULL, "
             "Password TEXT NOT NULL);"
-            "CREATE TABLE IF NOT EXISTS Keys ("
-            "KeyID INTEGER PRIMARY KEY, "
-            "UserID INTEGER, "
-            "PublicKey TEXT, "
-            "PrivateKey TEXT, "
-            "FOREIGN KEY(UserID) REFERENCES Users(UserID));"
             "CREATE TABLE IF NOT EXISTS Memos ("
             "MemoID INTEGER PRIMARY KEY, "
             "UserID INTEGER, "
             "Message TEXT, "
-            "KeyID INTEGER, "
-            "FOREIGN KEY(UserID) REFERENCES Users(UserID), "
-            "FOREIGN KEY(KeyID) REFERENCES Keys(KeyID));";
+            "FOREIGN KEY(UserID) REFERENCES Users(UserID));";
     int rc = sqlite3_exec(db, sql, 0, 0, &err_msg);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "SQL error: %s\n", err_msg);
@@ -91,42 +138,96 @@ int get_user_id(sqlite3 *db, const char *username) {
     return user_id;
 }
 
-void add_memo(sqlite3 *db, int userid, const char *message) {
-    sqlite3_stmt *stmt;
-    const char *sql = "INSERT INTO Memos (UserID, Message) VALUES (?, ?);";
+void encrypt_rsa(const char *public_key_path, const char *plain_text, char *encrypted_text) {
+    FILE *pub_key_file = fopen(public_key_path, "rb");
+    if (!pub_key_file) {
+        fprintf(stderr, "Unable to open public key file\n");
+        return;
+    }
 
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_int(stmt, 1, userid);
-        sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC);
+    RSA *rsa = PEM_read_RSA_PUBKEY(pub_key_file, NULL, NULL, NULL);
+    fclose(pub_key_file);
 
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
-            fprintf(stderr, "Failed to add memo: %s\n", sqlite3_errmsg(db));
-        } else {
-            printf("Memo added successfully\n");
-        }
-        sqlite3_finalize(stmt);
+    if (!rsa) {
+        fprintf(stderr, "Unable to read public key\n");
+        return;
+    }
+
+    int result = RSA_public_encrypt(strlen(plain_text), (unsigned char*)plain_text, (unsigned char*)encrypted_text, rsa, RSA_PKCS1_PADDING);
+
+    RSA_free(rsa);
+
+    if (result == -1) {
+        fprintf(stderr, "Encryption failed\n");
+    }
+}
+
+
+void add_memo(sqlite3 *db, int user_id, const char *message) {
+    char *err_msg = 0;
+    char encrypted_message[256];
+
+    encrypt_rsa("public_key.pem", message, encrypted_message);
+
+    char sql[1024];
+    sprintf(sql, "INSERT INTO Memos (UserID, Message) VALUES (%d, '%s');", user_id, encrypted_message);
+
+    if (sqlite3_exec(db, sql, 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", err_msg);
+        sqlite3_free(err_msg);
     } else {
+        fprintf(stdout, "Memo added successfully\n");
+    }
+}
+
+void decrypt_rsa(const char *private_key_path, const char *encrypted_text, char *decrypted_text) {
+    FILE *priv_key_file = fopen(private_key_path, "rb");
+    if (!priv_key_file) {
+        fprintf(stderr, "Unable to open private key file\n");
+        return;
+    }
+
+    RSA *rsa = PEM_read_RSAPrivateKey(priv_key_file, NULL, NULL, NULL);
+    fclose(priv_key_file);
+
+    if (!rsa) {
+        fprintf(stderr, "Unable to read private key\n");
+        return;
+    }
+
+    int result = RSA_private_decrypt(RSA_size(rsa), (unsigned char*)encrypted_text, (unsigned char*)decrypted_text, rsa, RSA_PKCS1_PADDING);
+
+    RSA_free(rsa);
+
+    if (result == -1) {
+        fprintf(stderr, "Decryption failed\n");
+    } else {
+        decrypted_text[result] = '\0';
+    }
+}
+
+void view_memos(sqlite3 *db, int user_id) {
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT MemoID, Message FROM Memos WHERE UserID = ?;";
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
-    }
-}
-
-int view_memo_callback(void *NotUsed, int argc, char **argv, char **azColName) {
-    for (int i = 0; i < argc; i++) {
-        printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
-    }
-    printf("\n");
-    return 0;
-}
-
-void view_memos(sqlite3 *db, int userid) {
-    char *sql;
-    asprintf(&sql, "SELECT MemoID, Message FROM Memos WHERE UserID = %d;", userid);
-
-    if (sqlite3_exec(db, sql, view_memo_callback, 0, NULL) != SQLITE_OK) {
-        fprintf(stderr, "Failed to fetch memos\n");
+        return;
     }
 
-    free(sql);
+    sqlite3_bind_int(stmt, 1, user_id);
+
+    char decrypted_memo[256];
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *encrypted_memo = (const char*)sqlite3_column_text(stmt, 1);
+
+        decrypt_rsa("private_key.pem", encrypted_memo, decrypted_memo);
+
+        printf("Memo: %s\n", decrypted_memo);
+    }
+
+    sqlite3_finalize(stmt);
 }
 
 void remove_memo(sqlite3 *db, int memo_id) {
@@ -151,7 +252,7 @@ int main() {
     sqlite3 *db;
     char *err_msg = 0;
 
-    int rc = sqlite3_open("project.db", &db);
+    int rc = sqlite3_open("main.db", &db);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
