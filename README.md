@@ -22,3 +22,6 @@ Milestones:
 - 4/21 Presentation Due
 
 ERD and Logic Flow attached as images
+
+Command to compile:
+gcc -o main main.c sqlite/sqlite3.c -Isqlite -lpthread -ldl
