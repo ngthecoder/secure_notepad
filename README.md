@@ -21,6 +21,10 @@ Milestones:
 - 4/14 Program Completed / Practice Presentation
 - 4/21 Presentation Due
 
+How to install the packages:
+- sudo yum install sqlite-devel
+- # dnf install openssl
+
 ERD and Logic Flow attached as images
 
 Command to compile:
