@@ -344,32 +344,46 @@ int main() {
                 printf("Login successful!\n");
 
                 while (1) {
-                    printf("Choose an option: add_memo, view_encrypted_memos, view_decrypted_memos, remove_memo, logout: ");
-                    char memo_option[30];
-                    scanf("%29s%*c", memo_option);
+                    int choice;
+                    printf("\nChoose an option:\n");
+                    printf("1. add_memo\n");
+                    printf("2. view_encrypted_memos\n");
+                    printf("3. view_decrypted_memos\n");
+                    printf("4. remove_memo\n");
+                    printf("5. logout\n");
+                    printf("Enter your choice: ");
+                    scanf("%d%*c", &choice);
 
-                    if (strcmp(memo_option, "add_memo") == 0) {
-                        char memo[256];
-                        printf("Enter your memo: ");
-                        scanf(" %[^\n]%*c", memo);
-                        add_memo(db, userid, memo);
-
-                    } else if (strcmp(memo_option, "view_encrypted_memos") == 0) {
-                        view_encrypted_memos(db, userid);
-
-                    } else if (strcmp(memo_option, "view_decrypted_memos") == 0) {
-                        view_decrypted_memos(db, userid);
-
-                    } else if (strcmp(memo_option, "remove_memo") == 0) {
-                        int memo_id;
-                        printf("Enter the ID of the memo to remove: ");
-                        scanf("%d%*c", &memo_id);
-                        remove_memo(db, memo_id);
-
-                    } else if (strcmp(memo_option, "logout") == 0) {
-                        break;
+                    switch (choice) {
+                        case 1: {
+                            char memo[256];
+                            printf("Enter your memo: ");
+                            scanf(" %[^\n]%*c", memo);
+                            add_memo(db, userid, memo);
+                            break;
+                        }
+                        case 2:
+                            view_encrypted_memos(db, userid);
+                            break;
+                        case 3:
+                            view_decrypted_memos(db, userid);
+                            break;
+                        case 4: {
+                            int memo_id;
+                            printf("Enter the ID of the memo to remove: ");
+                            scanf("%d%*c", &memo_id);
+                            remove_memo(db, memo_id);
+                            break;
+                        }
+                        case 5:
+                            printf("Logging out...\n");
+                            goto logout;
+                        default:
+                            printf("Invalid choice. Please try again.\n");
+                            break;
                     }
                 }
+                logout:
             }
             else {
                 printf("Login failed. Please try again.\n");
