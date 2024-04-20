@@ -133,7 +133,7 @@ int get_user_id(sqlite3 *db, const char *username) {
     return user_id;
 }
 
-void encrypt_rsa(const char *public_key_path, const char *plain_text, char *encrypted_text) {
+void encrypt_rsa(const char *public_key_path, const char *plain_text, unsigned char **encrypted_text, int *encrypted_len) {
     FILE *pub_key_file = fopen(public_key_path, "rb");
     if (!pub_key_file) {
         fprintf(stderr, "Unable to open public key file\n");
@@ -148,34 +148,56 @@ void encrypt_rsa(const char *public_key_path, const char *plain_text, char *encr
         return;
     }
 
-    int result = RSA_public_encrypt(strlen(plain_text), (unsigned char*)plain_text, (unsigned char*)encrypted_text, rsa, RSA_PKCS1_PADDING);
+    int rsa_size = RSA_size(rsa);
+    *encrypted_text = (unsigned char *)malloc(rsa_size);
+    if (!*encrypted_text) {
+        fprintf(stderr, "Memory allocation failed\n");
+        RSA_free(rsa);
+        return;
+    }
+
+    *encrypted_len = RSA_public_encrypt(strlen(plain_text), (unsigned char*)plain_text, *encrypted_text, rsa, RSA_PKCS1_PADDING);
 
     RSA_free(rsa);
 
-    if (result == -1) {
+    if (*encrypted_len == -1) {
         fprintf(stderr, "Encryption failed\n");
+        free(*encrypted_text);
+        *encrypted_text = NULL;
     }
 }
 
 
 void add_memo(sqlite3 *db, int user_id, const char *message) {
     char *err_msg = 0;
-    char encrypted_message[256];
+    unsigned char *encrypted_message = NULL;
+    int encrypted_len = 0;
 
-    encrypt_rsa("public_key.pem", message, encrypted_message);
+    encrypt_rsa("public_key.pem", message, &encrypted_message, &encrypted_len);
 
-    char sql[1024];
-    sprintf(sql, "INSERT INTO Memos (UserID, Message) VALUES (%d, '%s');", user_id, encrypted_message);
+    if (encrypted_message) {
+        char sql[1024];
+        snprintf(sql, sizeof(sql), "INSERT INTO Memos (UserID, Message) VALUES (%d, ?);", user_id);
 
-    if (sqlite3_exec(db, sql, 0, 0, &err_msg) != SQLITE_OK) {
-        fprintf(stderr, "SQL error: %s\n", err_msg);
-        sqlite3_free(err_msg);
-    } else {
-        fprintf(stdout, "Memo added successfully\n");
+        sqlite3_stmt *stmt;
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_blob(stmt, 1, encrypted_message, encrypted_len, SQLITE_TRANSIENT);
+
+            if (sqlite3_step(stmt) != SQLITE_DONE) {
+                fprintf(stderr, "Failed to add memo: %s\n", sqlite3_errmsg(db));
+            } else {
+                fprintf(stdout, "Memo added successfully\n");
+            }
+            sqlite3_finalize(stmt);
+        } else {
+            fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        }
+
+        free(encrypted_message);
     }
 }
 
-void decrypt_rsa(const char *private_key_path, const char *encrypted_text, char *decrypted_text) {
+void decrypt_rsa(const char *private_key_path, const unsigned char *encrypted_text, int encrypted_len, unsigned char **decrypted_text) {
     FILE *priv_key_file = fopen(private_key_path, "rb");
     if (!priv_key_file) {
         fprintf(stderr, "Unable to open private key file\n");
@@ -190,18 +212,28 @@ void decrypt_rsa(const char *private_key_path, const char *encrypted_text, char 
         return;
     }
 
-    int result = RSA_private_decrypt(RSA_size(rsa), (unsigned char*)encrypted_text, (unsigned char*)decrypted_text, rsa, RSA_PKCS1_PADDING);
+    int rsa_size = RSA_size(rsa);
+    *decrypted_text = (unsigned char *)malloc(rsa_size);
+    if (!*decrypted_text) {
+        fprintf(stderr, "Memory allocation failed\n");
+        RSA_free(rsa);
+        return;
+    }
+
+    int result = RSA_private_decrypt(encrypted_len, encrypted_text, *decrypted_text, rsa, RSA_PKCS1_PADDING);
 
     RSA_free(rsa);
 
     if (result == -1) {
         fprintf(stderr, "Decryption failed\n");
+        free(*decrypted_text);
+        *decrypted_text = NULL;
     } else {
-        decrypted_text[result] = '\0';
+        (*decrypted_text)[result] = '\0';
     }
 }
 
-void view_memos(sqlite3 *db, int user_id) {
+void view_decrypted_memos(sqlite3 *db, int user_id) {
     sqlite3_stmt *stmt;
     const char *sql = "SELECT MemoID, Message FROM Memos WHERE UserID = ?;";
 
@@ -212,14 +244,18 @@ void view_memos(sqlite3 *db, int user_id) {
 
     sqlite3_bind_int(stmt, 1, user_id);
 
-    char decrypted_memo[256];
-
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        const char *encrypted_memo = (const char*)sqlite3_column_text(stmt, 1);
+        int memo_id = sqlite3_column_int(stmt, 0);
+        const void *encrypted_memo = sqlite3_column_blob(stmt, 1);
+        int encrypted_len = sqlite3_column_bytes(stmt, 1);
 
-        decrypt_rsa("private_key.pem", encrypted_memo, decrypted_memo);
+        unsigned char *decrypted_memo = NULL;
+        decrypt_rsa("private_key.pem", encrypted_memo, encrypted_len, &decrypted_memo);
 
-        printf("Memo: %s\n", decrypted_memo);
+        if (decrypted_memo) {
+            printf("Memo ID: %d, Content: %s\n", memo_id, decrypted_memo);
+            free(decrypted_memo);
+        }
     }
 
     sqlite3_finalize(stmt);
@@ -293,19 +329,19 @@ int main() {
                         add_memo(db, userid, memo);
 
                     } else if (strcmp(memo_option, "view_memos") == 0) {
-                        view_memos(db, userid);
-
+                        view_decrypted_memos(db, userid);
                     } else if (strcmp(memo_option, "remove_memo") == 0) {
                         int memo_id;
                         printf("Enter the ID of the memo to remove: ");
                         scanf("%d", &memo_id);
                         remove_memo(db, memo_id);
-
+                        break;
                     } else if (strcmp(memo_option, "logout") == 0) {
                         break;
                     }
                 }
-            } else {
+            }
+            else {
                 printf("Login failed. Please try again.\n");
             }
 
