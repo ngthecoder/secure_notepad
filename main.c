@@ -233,6 +233,32 @@ void decrypt_rsa(const char *private_key_path, const unsigned char *encrypted_te
     }
 }
 
+void view_encrypted_memos(sqlite3 *db, int user_id) {
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT MemoID, Message FROM Memos WHERE UserID = ?;";
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        return;
+    }
+
+    sqlite3_bind_int(stmt, 1, user_id);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        int memo_id = sqlite3_column_int(stmt, 0);
+        const void *encrypted_memo = sqlite3_column_blob(stmt, 1);
+        int encrypted_len = sqlite3_column_bytes(stmt, 1);
+
+        printf("Memo ID: %d, Encrypted Content: ", memo_id);
+        for (int i = 0; i < encrypted_len; i++) {
+            printf("%02X", ((unsigned char*)encrypted_memo)[i]);
+        }
+        printf("\n");
+    }
+
+    sqlite3_finalize(stmt);
+}
+
 void view_decrypted_memos(sqlite3 *db, int user_id) {
     sqlite3_stmt *stmt;
     const char *sql = "SELECT MemoID, Message FROM Memos WHERE UserID = ?;";
@@ -253,7 +279,7 @@ void view_decrypted_memos(sqlite3 *db, int user_id) {
         decrypt_rsa("private_key.pem", encrypted_memo, encrypted_len, &decrypted_memo);
 
         if (decrypted_memo) {
-            printf("Memo ID: %d, Content: %s\n", memo_id, decrypted_memo);
+            printf("Memo ID: %d, Decrypted Content: %s\n", memo_id, decrypted_memo);
             free(decrypted_memo);
         }
     }
@@ -318,24 +344,28 @@ int main() {
                 printf("Login successful!\n");
 
                 while (1) {
-                    printf("Choose an option: add_memo, view_memos, remove_memo, logout: ");
-                    char memo_option[20];
-                    scanf("%19s", memo_option);
+                    printf("Choose an option: add_memo, view_encrypted_memos, view_decrypted_memos, remove_memo, logout: ");
+                    char memo_option[30];
+                    scanf("%29s%*c", memo_option);
 
                     if (strcmp(memo_option, "add_memo") == 0) {
                         char memo[256];
                         printf("Enter your memo: ");
-                        scanf(" %[^\n]", memo);
+                        scanf(" %[^\n]%*c", memo);
                         add_memo(db, userid, memo);
 
-                    } else if (strcmp(memo_option, "view_memos") == 0) {
+                    } else if (strcmp(memo_option, "view_encrypted_memos") == 0) {
+                        view_encrypted_memos(db, userid);
+
+                    } else if (strcmp(memo_option, "view_decrypted_memos") == 0) {
                         view_decrypted_memos(db, userid);
+
                     } else if (strcmp(memo_option, "remove_memo") == 0) {
                         int memo_id;
                         printf("Enter the ID of the memo to remove: ");
-                        scanf("%d", &memo_id);
+                        scanf("%d%*c", &memo_id);
                         remove_memo(db, memo_id);
-                        break;
+
                     } else if (strcmp(memo_option, "logout") == 0) {
                         break;
                     }
