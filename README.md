@@ -1,33 +1,51 @@
-This is a project for CNIT315.
-
-Objective: Create a notepad-ish program in C that stores messages securely using RSA encryption.
-
-Contributors: K.H, N.G
-K.H: 
-- Recreate the algorithm in C
-- Organize the programs in main()
-
-N.G:
-- Manage the data coming in and out of the database
-- Create the UI
-
-Milestones:
-- 2/26 Presentation Proposal Due (Done)
-- 3/7 - Update
-- 3/14 - Update
-- 3/21 - Update
-- 3/27 - Update
-- 4/1 Finish Algorithm / Finish Database Setup
-- 4/14 Program Completed / Practice Presentation
-- 4/21 Presentation Due
-
-How to install the packages:
-- sudo yum install sqlite-devel
-- # dnf install openssl
-
-ERD and Logic Flow attached as images
-
-Command to compile:
-gcc -o main main.c sqlite/sqlite3.c -Isqlite -lpthread -ldl
-gcc -o main main.c -Isqlite -lpthread -ldl -lssl -lcrypto
-(final) gcc main.c -o main -lsqlite3 -lcrypto -ldl
+# Secure Notepad Project
+This project is a secure notepad application implemented in C, utilizing the RSA encryption algorithm and SQLite database for user management and note storage. The application allows users to register, login, create, view, and delete encrypted notes.
+## Features
+- User registration and login functionality
+- RSA encryption for secure note storage
+- SQLite database for user and note management
+- Ability to create, view (encrypted and decrypted), and delete notes
+- Command-line user interface
+## Requirements
+- C compiler (e.g., GCC)
+- SQLite3 library
+- OpenSSL library
+## Setup
+1. Clone the repository:
+   ```
+   git clone https://github.com/Rotoyu/CNIT315_Encrypted_Memo
+   ```
+2. Navigate to the project directory:
+   ```
+   cd CNIT315_Encrypted_Memo
+   ```
+3. Compile the project:
+   ```
+   gcc -o main main.c -lsqlite3 -lcrypto
+   ```
+4. Run the application:
+   ```
+   ./main
+   ```
+## Usage
+1. Upon running the application, you will be prompted to choose an option: register, login, or exit.
+2. If you are a new user, select "register" and provide a unique username and password.
+3. If you are a registered user, select "login" and enter your username and password.
+4. Once logged in, you can choose from the following options:
+   - add_memo: Enter a new note to be encrypted and stored.
+   - view_encrypted_memos: View your notes in encrypted form.
+   - view_decrypted_memos: View your notes in decrypted form.
+   - remove_memo: Delete a note by providing its ID.
+   - logout: Log out of the application.
+5. Follow the prompts to perform the desired actions.
+## Implementation Details
+- The RSA encryption algorithm is implemented using the OpenSSL library. If the RSA key pair is not found, the application generates a new 2048-bit key pair.
+- SQLite is used as the database to store user information and encrypted notes. The application creates two tables: "Users" for user credentials and "Memos" for storing notes.
+- User registration and authentication are performed using SQLite queries to ensure secure access to the application.
+- Notes are encrypted using the RSA public key before being stored in the database and decrypted using the RSA private key when viewed by the user.
+## Future Improvements
+- Input validation and data sanitization should be improved to handle invalid inputs and prevent potential errors or security vulnerabilities.
+- The OpenSSL functions used in the project are marked as deprecated. Consider updating to newer encryption methods or libraries in future versions.
+## Contributors
+- Rotoyu
+- ngthecoder
