@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sqlite3.h>
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
@@ -72,10 +73,31 @@ void create_tables(sqlite3 *db) {
     }
 }
 
+bool user_exists(sqlite3 *db, const char *username) {
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT COUNT(*) FROM Users WHERE Username = ?";
+    int result = 0;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+	sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+	    result = sqlite3_column_int(stmt, 0);
+	}
+	sqlite3_finalize(stmt);
+    } else {
+	fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+    }
+    return result > 0;
+}
 void register_user(sqlite3 *db, const char *username, const char *password) {
+    if (user_exists(db, username)) {
+	printf("User already exists!\n");
+	return;
+    }
+
     sqlite3_stmt *stmt;
     const char *sql = "INSERT INTO Users (Username, Password) VALUES (?, ?);";
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+   if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
         if (sqlite3_step(stmt) != SQLITE_DONE) {
@@ -287,21 +309,29 @@ void view_decrypted_memos(sqlite3 *db, int user_id) {
     sqlite3_finalize(stmt);
 }
 
-void remove_memo(sqlite3 *db, int memo_id) {
+void remove_memo(sqlite3 *db, int user_id, int memo_id) {
     sqlite3_stmt *stmt;
-    const char *sql = "DELETE FROM Memos WHERE MemoID = ?;";
+    const char *sql = "DELETE FROM Memos WHERE MemoID = ? AND UserID = ?;";
+    int rc = sqlite3_prepare_v2(db,sql,-1,&stmt,NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+	return;
+    }
 
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_int(stmt, 1, memo_id);
+    sqlite3_bind_int(stmt, 1, memo_id);
+    sqlite3_bind_int(stmt, 2, user_id);
 
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
             fprintf(stderr, "Failed to delete memo: %s\n", sqlite3_errmsg(db));
-        } else {
+    } else {
+        if (sqlite3_changes(db)==0){
+	    printf("Error: Message does not exist or Memo doesn't belong to you.\n");
+	} else { 
             printf("Memo removed successfully\n");
         }
-        sqlite3_finalize(stmt);
-    } else {
-        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        
+	sqlite3_finalize(stmt);
     }
 }
 
@@ -340,9 +370,8 @@ int main() {
             scanf("%49s", password);
 
             if (authenticate(db, username, password)) {
-                int userid = get_user_id(db, username);
                 printf("Login successful!\n");
-
+		int userid = get_user_id(db,username);
                 while (1) {
                     int choice;
                     printf("\nChoose an option:\n");
@@ -352,7 +381,7 @@ int main() {
                     printf("4. remove_memo\n");
                     printf("5. logout\n");
                     printf("Enter your choice: ");
-                    scanf("%d%*c", &choice);
+                    scanf("%d*c", &choice);
 
                     switch (choice) {
                         case 1: {
@@ -372,7 +401,7 @@ int main() {
                             int memo_id;
                             printf("Enter the ID of the memo to remove: ");
                             scanf("%d%*c", &memo_id);
-                            remove_memo(db, memo_id);
+                            remove_memo(db, userid, memo_id);
                             break;
                         }
                         case 5:
