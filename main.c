@@ -426,3 +426,13 @@ int main() {
     sqlite3_close(db);
     return 0;
 }
+
+/*
+Citaions:
+https://www.sqlite.org/cintro.html
+https://www.openssl.org/docs/man1.1.1/man3/RSA_public_encrypt.html
+https://www.openssl.org/docs/man1.1.1/man3/RSA_private_decrypt.html
+https://www.openssl.org/docs/man1.1.1/man3/PEM_read_RSA_PUBKEY.html
+https://www.openssl.org/docs/man1.1.1/man3/PEM_read_RSAPrivateKey.html
+https://openai.com/chats
+*/
