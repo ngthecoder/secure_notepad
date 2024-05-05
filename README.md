@@ -13,11 +13,11 @@ This project is a secure notepad application implemented in C, utilizing the RSA
 ## Setup
 1. Clone the repository:
    ```
-   git clone https://github.com/Rotoyu/CNIT315_Encrypted_Memo
+   git clone https://github.com/ngthecoder/secure_notepad
    ```
 2. Navigate to the project directory:
    ```
-   cd CNIT315_Encrypted_Memo
+   cd secure_notepad
    ```
 3. Compile the project:
    ```
@@ -47,5 +47,5 @@ This project is a secure notepad application implemented in C, utilizing the RSA
 - Input validation and data sanitization should be improved to handle invalid inputs and prevent potential errors or security vulnerabilities.
 - The OpenSSL functions used in the project are marked as deprecated. Consider updating to newer encryption methods or libraries in future versions.
 ## Contributors
-- Rotoyu
-- ngthecoder
+- [Rotoyu](https://github.com/Rotoyu)
+- [ngthecoder](https://github.com/ngthecoder)
